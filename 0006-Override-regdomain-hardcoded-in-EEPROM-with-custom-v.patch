@@ -1,0 +1,58 @@
+From 8fd7faa9663f3da114a0ad843a0d3240ef69029c Mon Sep 17 00:00:00 2001
+From: Alexandr Savca <alexandr.savca89@gmail.com>
+Date: Wed, 6 Nov 2019 15:55:46 +0200
+Subject: [PATCH 6/8] Override regdomain hardcoded in EEPROM with custom value
+
+Get your country code from linux/drivers/net/wireless/ath/regd.h
+and supply as a parameter.
+
+Thanks to Paul Fertser <fercerpav [at] gmail.com>
+---
+ drivers/net/wireless/ath/carl9170/main.c | 24 +++++++++++++++++++++++-
+ 1 file changed, 23 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/net/wireless/ath/carl9170/main.c b/drivers/net/wireless/ath/carl9170/main.c
+index 40a8054f8aa6..368c9d3d1030 100644
+--- a/drivers/net/wireless/ath/carl9170/main.c
++++ b/drivers/net/wireless/ath/carl9170/main.c
+@@ -47,6 +47,15 @@
+ #include "carl9170.h"
+ #include "cmd.h"
+ 
++static int modparam_override_eeprom_regdomain = -1;
++module_param_named(
++	override_eeprom_regdomain,
++	modparam_override_eeprom_regdomain,
++	int,
++	S_IRUGO);
++MODULE_PARM_DESC(override_eeprom_regdomain,
++	"Override regdomain hardcoded in EEPROM with this value (DANGEROUS).");
++
+ static bool modparam_nohwcrypt;
+ module_param_named(nohwcrypt, modparam_nohwcrypt, bool, 0444);
+ MODULE_PARM_DESC(nohwcrypt, "Disable hardware crypto offload.");
+@@ -1958,7 +1967,20 @@ static int carl9170_parse_eeprom(struct ar9170 *ar)
+ 		return -ENOMEM;
+ 	ar->num_channels = chans;
+ 
+-	regulatory->current_rd = le16_to_cpu(ar->eeprom.reg_domain[0]);
++	if (modparam_override_eeprom_regdomain != -1) {
++		dev_err(&ar->udev->dev,
++			"DANGER! You're overriding EEPROM-defined regulatory "
++			"domain.\n"
++			"Your card was not certified to operate on the domain "
++			"you choosed.\n"
++			"This might result in a violation of your local "
++			"regulatory rules.\n"
++			"Do not ever do that unless you really know what "
++			"you do!\n");
++		regulatory->current_rd =
++			modparam_override_eeprom_regdomain + 32768;
++	} else
++		regulatory->current_rd = le16_to_cpu(ar->eeprom.reg_domain[0]);
+ 
+ 	/* second part of wiphy init */
+ 	SET_IEEE80211_PERM_ADDR(ar->hw, ar->eeprom.mac_address);
+-- 
+2.23.0
+

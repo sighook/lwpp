@@ -1,0 +1,65 @@
+From 03de268a5c24f09deae129f7decbb6a01e7a7112 Mon Sep 17 00:00:00 2001
+From: Alexandr Savca <alexandr.savca89@gmail.com>
+Date: Wed, 30 Oct 2019 13:48:43 +0200
+Subject: [PATCH 2/8] fix the channel changing of the monitor interface
+
+We can't change the channel when "normal" virtual interfaces are
+also using the device. So, it's unable to change the channel of
+the monitor interface with the error message
+"SET failed on device mon0 ; Device or resource busy."
+
+Practically this means that (if you don't apply this patch) we
+need to disable them by executing "ifconfig wlanX down" until we
+only have monitor interfaces over.
+
+However disabling them all the time is annoying and most of the
+time if you're playing with monitor mode you're not using the
+device in a normal mode anyway.
+
+Thanks to Mathy Vanhoef.
+http://www.mathyvanhoef.com/2012/09/compat-wireless-injection-patch-for.html
+---
+ net/mac80211/cfg.c  | 6 ++----
+ net/wireless/chan.c | 2 --
+ 2 files changed, 2 insertions(+), 6 deletions(-)
+
+diff --git a/net/mac80211/cfg.c b/net/mac80211/cfg.c
+index 4105c97c7ba1..51f4efe4b7c1 100644
+--- a/net/mac80211/cfg.c
++++ b/net/mac80211/cfg.c
+@@ -784,7 +784,7 @@ static int ieee80211_set_monitor_channel(struct wiphy *wiphy,
+ 			ret = ieee80211_vif_use_channel(sdata, chandef,
+ 					IEEE80211_CHANCTX_EXCLUSIVE);
+ 		}
+-	} else if (local->open_count == local->monitors) {
++	} else {
+ 		local->_oper_chandef = *chandef;
+ 		ieee80211_hw_config(local, 0);
+ 	}
+@@ -3616,9 +3616,7 @@ static int ieee80211_cfg_get_channel(struct wiphy *wiphy,
+ 	if (chanctx_conf) {
+ 		*chandef = sdata->vif.bss_conf.chandef;
+ 		ret = 0;
+-	} else if (local->open_count > 0 &&
+-		   local->open_count == local->monitors &&
+-		   sdata->vif.type == NL80211_IFTYPE_MONITOR) {
++	} else {
+ 		if (local->use_chanctx)
+ 			*chandef = local->monitor_chandef;
+ 		else
+diff --git a/net/wireless/chan.c b/net/wireless/chan.c
+index 7dc1bbd0888f..38ef513c0777 100644
+--- a/net/wireless/chan.c
++++ b/net/wireless/chan.c
+@@ -983,8 +983,6 @@ int cfg80211_set_monitor_channel(struct cfg80211_registered_device *rdev,
+ {
+ 	if (!rdev->ops->set_monitor_channel)
+ 		return -EOPNOTSUPP;
+-	if (!cfg80211_has_monitors_only(rdev))
+-		return -EBUSY;
+ 
+ 	return rdev_set_monitor_channel(rdev, chandef);
+ }
+-- 
+2.23.0
+
