@@ -1,4 +1,4 @@
-# Linux wifi pentest patches
+# Linux Wi-Fi Pentest Patches
 
 A collection of patches for vanilla linux kernel,
 useful for pentesters and security engineers.
