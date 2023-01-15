@@ -17,9 +17,10 @@ Supported branches:
 
   ```sh
   _BRANCH=5.4
-  cd /usr/src/linux${_BRANCH}
-  for _PATCH in ../linux-wifi-pentest-patches/${_BRANCH}/*.patch; do
-      patch -p1 -i ${_PATCH}
+  git clone https://github.com/sighook/lwpp
+  cd /usr/src/linux-$_BRANCH
+  for _PATCH in /path/lwpp/$_BRANCH/*.patch; do
+      patch -p1 -i $_PATCH
   done
   ```
 
