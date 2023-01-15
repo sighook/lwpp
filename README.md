@@ -23,7 +23,24 @@ Supported branches:
   done
   ```
 
-- Build the kernel & modules
+- Build the kernel & modules. For example:
+
+  ```sh
+  cp /boot/config .config
+  make olddefconfig
+  make -j$(nproc) all
+  make modules_install
+  cp arch/x86/boot/bzImage /boot/vmlinuz
+  cp .config /boot/config
+  ```
+
+- Update bootloader. For example (in case you're using GRUB):
+
+  ```sh
+  grub-mkconfig -o /boot/grub/grub.cfg
+  ```
+
+- Reboot.
 
 - Have fun!
 
