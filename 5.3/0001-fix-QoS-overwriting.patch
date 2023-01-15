@@ -1,0 +1,36 @@
+From 8a0cda7106ec10bb1daf964aa737d4aeadf89947 Mon Sep 17 00:00:00 2001
+From: Alexandr Savca <alexandr.savca89@gmail.com>
+Date: Wed, 30 Oct 2019 13:18:25 +0200
+Subject: [PATCH 1/8] fix QoS overwriting
+
+When injecting packets the Quality of Service (QoS) header was
+being overwritten by the driver.
+
+This patch tells to the driver to not overwrite the QoS header
+when the device is in the monitor mode.
+
+Thanks to Mathy Vanhoef.
+http://www.mathyvanhoef.com/2012/09/compat-wireless-injection-patch-for.html
+---
+ net/mac80211/tx.c | 5 ++++-
+ 1 file changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/net/mac80211/tx.c b/net/mac80211/tx.c
+index f13eb2f61ccf..01b1623882f9 100644
+--- a/net/mac80211/tx.c
++++ b/net/mac80211/tx.c
+@@ -2011,7 +2011,10 @@ void ieee80211_xmit(struct ieee80211_sub_if_data *sdata,
+ 		}
+ 	}
+ 
+-	ieee80211_set_qos_hdr(sdata, skb);
++	// Don't overwrite QoS header in monitor mode
++	if (likely(info->control.vif->type != NL80211_IFTYPE_MONITOR)) {
++		ieee80211_set_qos_hdr(sdata, skb);
++}
+ 	ieee80211_tx(sdata, sta, skb, false, txdata_flags);
+ }
+ 
+-- 
+2.23.0
+

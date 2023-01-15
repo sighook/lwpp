@@ -1,0 +1,47 @@
+From eeefac37492180fa97e88487e000ce6068b1d767 Mon Sep 17 00:00:00 2001
+From: Alexandr Savca <alexandr.savca89@gmail.com>
+Date: Sun, 3 Nov 2019 22:34:50 +0200
+Subject: [PATCH 4/8] skip frame ACKing & renumbering: handle sequence by
+ userspace
+
+Packet injection may want to control the sequence number, so
+if an injected packet is found, skip renumbering it. Also make the
+packet NO_ACK to avoid excessive retries (ACKing and retrying
+should be handled by the injecting application).
+
+FIXME This may break hostapd and some other injectors.
+This should be done using a radiotap flag.
+---
+ net/mac80211/tx.c | 14 +++++++++++---
+ 1 file changed, 11 insertions(+), 3 deletions(-)
+
+diff --git a/net/mac80211/tx.c b/net/mac80211/tx.c
+index 01b1623882f9..9e6381ad560a 100644
+--- a/net/mac80211/tx.c
++++ b/net/mac80211/tx.c
+@@ -802,11 +802,19 @@ ieee80211_tx_h_sequence(struct ieee80211_tx_data *tx)
+ 
+ 	/*
+ 	 * Packet injection may want to control the sequence
+-	 * number, if we have no matching interface then we
+-	 * neither assign one ourselves nor ask the driver to.
++	 * number, so if an injected packet is found, skip
++	 * renumbering it. Also make the packet NO_ACK to avoid
++	 * excessive retries (ACKing and retrying should be
++	 * handled by the injected application).
++	 * FIXME This may break hostapd and some other injectors.
++	 * This should be done using a radiotap flag.
+ 	 */
+-	if (unlikely(info->control.vif->type == NL80211_IFTYPE_MONITOR))
++	if (unlikely((info->flags & IEEE80211_TX_CTL_INJECTED) &&
++	    !(tx->sdata->u.mntr.flags & MONITOR_FLAG_COOK_FRAMES))) {
++		if (!ieee80211_has_morefrags(hdr->frame_control))
++			info->flags |= IEEE80211_TX_CTL_NO_ACK;
+ 		return TX_CONTINUE;
++	}
+ 
+ 	if (unlikely(ieee80211_is_ctl(hdr->frame_control)))
+ 		return TX_CONTINUE;
+-- 
+2.23.0
+

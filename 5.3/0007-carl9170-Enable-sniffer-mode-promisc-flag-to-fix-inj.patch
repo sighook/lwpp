@@ -1,0 +1,59 @@
+From 23c9ba4379a1607f5c8b21a5117110204e8d68fd Mon Sep 17 00:00:00 2001
+From: Alexandr Savca <alexandr.savca89@gmail.com>
+Date: Wed, 6 Nov 2019 16:08:17 +0200
+Subject: [PATCH 7/8] carl9170: Enable sniffer mode promisc flag to fix
+ injection
+
+The removal of the AR9170_MAC_SNIFFER_ENABLE_PROMISC flag to fix an issue
+many years ago caused the AR9170 to not be able to pass probe response
+packets with different MAC addresses back up to the driver. In general
+operation, this doesn't matter, but in the case of packet injection with
+aireplay-ng it is important. aireplay-ng specifically injects packets with
+spoofed MAC addresses on the probe requests and looks for probe responses
+back to those addresses. No other combination of filter flags seem to fix
+this issue and so AR9170_MAC_SNIFFER_ENABLE is required to get these packets.
+
+This was originally caused by commit e0509d3bdd7365d06c9bf570bf9f11 which
+removed this flag in order to avoid spurious ack noise from the hardware.
+In testing for this issue, keeping this flag but not restoring the
+AR9170_MAC_RX_CTRL_ACK_IN_SNIFFER flag on the rc_ctrl seems to solve this
+issue, at least with the most current firmware v1.9.9.
+
+Thanks to Steve deRosier <derosier [at] cal-sierra.com>
+---
+ drivers/net/wireless/ath/carl9170/mac.c | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/drivers/net/wireless/ath/carl9170/mac.c b/drivers/net/wireless/ath/carl9170/mac.c
+index b2eeb9fd68d2..cfd7933d32e4 100644
+--- a/drivers/net/wireless/ath/carl9170/mac.c
++++ b/drivers/net/wireless/ath/carl9170/mac.c
+@@ -309,6 +309,7 @@ int carl9170_set_operating_mode(struct ar9170 *ar)
+ 	u32 rx_ctrl = AR9170_MAC_RX_CTRL_DEAGG |
+ 		      AR9170_MAC_RX_CTRL_SHORT_FILTER;
+ 	u32 sniffer = AR9170_MAC_SNIFFER_DEFAULTS;
++	u32 mac_ftf = AR9170_MAC_FTF_DEFAULTS;
+ 	int err = 0;
+ 
+ 	rcu_read_lock();
+@@ -373,6 +374,9 @@ int carl9170_set_operating_mode(struct ar9170 *ar)
+ 
+ 	if (ar->sniffer_enabled) {
+ 		enc_mode |= AR9170_MAC_ENCRYPTION_RX_SOFTWARE;
++		mac_ftf = AR9170_MAC_FTF_MONITOR;
++		sniffer |= AR9170_MAC_SNIFFER_ENABLE_PROMISC;
++		mac_addr = NULL;
+ 	}
+ 
+ 	err = carl9170_set_mac_reg(ar, AR9170_MAC_REG_MAC_ADDR_L, mac_addr);
+@@ -384,6 +388,7 @@ int carl9170_set_operating_mode(struct ar9170 *ar)
+ 		return err;
+ 
+ 	carl9170_regwrite_begin(ar);
++	carl9170_regwrite(AR9170_MAC_REG_FRAMETYPE_FILTER, mac_ftf);
+ 	carl9170_regwrite(AR9170_MAC_REG_SNIFFER, sniffer);
+ 	carl9170_regwrite(AR9170_MAC_REG_CAM_MODE, cam_mode);
+ 	carl9170_regwrite(AR9170_MAC_REG_ENCRYPTION, enc_mode);
+-- 
+2.23.0
+

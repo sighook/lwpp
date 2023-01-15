@@ -1,0 +1,57 @@
+From d05bb5d3bd25f3510403c2d2f28438f0c3cf0ee1 Mon Sep 17 00:00:00 2001
+From: Alexandr Savca <alexandr.savca89@gmail.com>
+Date: Thu, 31 Oct 2019 14:22:39 +0200
+Subject: [PATCH 3/8] fix injecting fragments on rtl8187-based wifi cards
+
+Injecting fragments was not working properly on rtl8187: only the
+the first fragment was being transmitted.
+
+A simple test to further isolate the issue by instructing to driver
+to send the following frames (from a userland program):
+
+    Send the first fragment
+    Send an ARP request packet
+    Send the second fragment, which is the last one
+
+It turned out the device actually transmits the ARP request packet
+first, and only then sends the first fragment! It first waiting
+for ALL the fragments before it begins sending them. Furthermore, it
+would only send the next fragment once the previous one has been
+acknowledged (which isn't detected in monitor mode, hence only the
+first fragment is transmitted).
+
+Thanks to Mathy Vanhoef.
+http://www.mathyvanhoef.com/2012/09/compat-wireless-injection-patch-for.html
+---
+ .../net/wireless/realtek/rtl818x/rtl8187/dev.c    | 15 +++++++++++++--
+ 1 file changed, 13 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/net/wireless/realtek/rtl818x/rtl8187/dev.c b/drivers/net/wireless/realtek/rtl818x/rtl8187/dev.c
+index eb68b2d3caa1..a9f73d0093ba 100644
+--- a/drivers/net/wireless/realtek/rtl818x/rtl8187/dev.c
++++ b/drivers/net/wireless/realtek/rtl818x/rtl8187/dev.c
+@@ -248,8 +248,19 @@ static void rtl8187_tx(struct ieee80211_hw *dev,
+ 	flags |= RTL818X_TX_DESC_FLAG_NO_ENC;
+ 
+ 	flags |= ieee80211_get_tx_rate(dev, info)->hw_value << 24;
+-	if (ieee80211_has_morefrags(tx_hdr->frame_control))
+-		flags |= RTL818X_TX_DESC_FLAG_MOREFRAG;
++
++	/* When this flag is set the firmware waits until ALL fragments have
++	 * reached the USB device. Then it sends the first fragment and waits
++	 * for ACK's. Of course in monitor mode it won't detect these ACK's.
++	 */
++	if (ieee80211_has_morefrags(tx_hdr->frame_control)) {
++		/* If info->control.vif is NULL it's more likely in monitor
++		 * mode.
++		 */
++		if (likely(info->control.vif != NULL &&
++		           info->control.vif->type != NL80211_IFTYPE_MONITOR))
++			flags |= RTL818X_TX_DESC_FLAG_MOREFRAG;
++	}
+ 
+ 	/* HW will perform RTS-CTS when only RTS flags is set.
+ 	 * HW will perform CTS-to-self when both RTS and CTS flags are set.
+-- 
+2.23.0
+
